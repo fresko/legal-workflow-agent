@@ -501,8 +501,8 @@ if uploaded_file:
                     file_path = tmp_file.name
                 response_llm = crete_prompt(file_path, st.session_state['selected_model'])
                 json_data = text_to_json(response_llm.text)
-                tab2.subheader("Visualizador de JSON")   
-                tab2.json(json_data, expanded=False)
+                #tab2.subheader("Visualizador de JSON")   
+                #tab2.json(json_data, expanded=False)
                 
                 # if json_data:
                 #     print(f"in bottom")
