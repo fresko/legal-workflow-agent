@@ -504,13 +504,13 @@ if uploaded_file:
                 tab2.subheader("Visualizador de JSON")   
                 tab2.json(json_data, expanded=False)
                 
-                if json_data:
-                    print(f"in bottom")
-                    response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", json_data) 
-                    if response and response.status_code == 200:
-                        tab2.success(f"Datos enviados correctamente al sistema externo. Respuesta: {response.text}")
-                    else:
-                        tab2.error("Error al enviar los datos al sistema externo.")
+                # if json_data:
+                #     print(f"in bottom")
+                #     response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", json_data) 
+                #     if response and response.status_code == 200:
+                #         tab2.success(f"Datos enviados correctamente al sistema externo. Respuesta: {response.text}")
+                #     else:
+                #         tab2.error("Error al enviar los datos al sistema externo.")
 
 
 
