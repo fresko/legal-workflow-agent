@@ -168,7 +168,23 @@ def wait_for_files_active(files):
     print("...all files ready")
     print()
 
-def crete_prompt(file_content,selected_llm):
+def crete_prompt(file_content, selected_llm, prompt=None, system_instructions=None):
+    """
+    Crea una interacción con el modelo de IA usando un archivo PDF y devuelve la respuesta.
+    
+    Args:
+        file_content (str): Ruta al archivo PDF
+        selected_llm (str): Nombre del modelo LLM a utilizar
+        prompt (str, opcional): Instrucción específica para el modelo
+        system_instructions (str, opcional): Instrucciones del sistema para guiar al modelo
+        
+    Returns:
+        Respuesta del modelo generativo
+    """
+    # Prompt por defecto si no se proporciona uno
+    if prompt is None:
+        prompt = "identifica los datos de convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
+    
     schema = {
     "type": "object",
     "properties": {
@@ -184,6 +200,9 @@ def crete_prompt(file_content,selected_llm):
                 "type": "string"
             },
             "email": {
+                "type": "string"
+            },
+            "telefono": {
                 "type": "string"
             }
             },
@@ -206,6 +225,9 @@ def crete_prompt(file_content,selected_llm):
             },
             "mail": {
                 "type": "string"
+            },
+            "telefono": {
+                "type": "string"
             }
             },
             "required": [
@@ -222,6 +244,9 @@ def crete_prompt(file_content,selected_llm):
      },
      "fecha_conciliacion": {
         "type": "string"
+     },
+     "jornada AM/PM": {
+        "type": "string"
      }
     },  
     "required": [
@@ -229,33 +254,49 @@ def crete_prompt(file_content,selected_llm):
         "convocados"
     ]
     }
-    prompt = "identifica los datos de convocantes , convocdos y fecha de audicencia del archivo adjunto"
+    
     generation_config = {
         "temperature": 1,
         "top_p": 0.95,
         "top_k": 40,
         "max_output_tokens": 8192,
         "response_mime_type": "application/json",
-        "response_schema" :  schema,
+        "response_schema": schema,
     }
+    
     model = genai.GenerativeModel(
         model_name=selected_llm,       
         generation_config=generation_config,
     )
+    
     files = genai.upload_file(file_content, mime_type="application/pdf")
     print(f"Uploaded file '{files.display_name}' as: {files.uri}")
-    chat_session = model.start_chat(
-        history=[
-            {
-                "role": "user",
-                "parts": [
-                    files,
-                    prompt,
-                ],
-            },
-        ]
-    )
-    response = chat_session.send_message("INSERT_INPUT_HERE")
+    
+    # Crear la historia del chat
+    history = []
+    
+    # Añadir instrucciones del sistema si se proporcionan
+    if system_instructions:
+        history.append({
+            "role": "system",
+            "parts": [system_instructions]
+        })
+    
+    # Añadir mensaje del usuario con archivo y prompt
+    history.append({
+        "role": "user",
+        "parts": [
+            files,
+            prompt,
+        ],
+    })
+    
+    # Iniciar la sesión de chat
+    chat_session = model.start_chat(history=history)
+    
+    # Enviar mensaje para obtener respuesta
+    response = chat_session.send_message("Analiza el documento según las instrucciones proporcionadas")
+    
     return response
 
 def send_webhook(webhook_url, json_data):
@@ -299,7 +340,7 @@ def send_webhook(webhook_url, json_data):
 
 # Configuración de la barra lateral
 with st.sidebar:
-    st.title("Agedamiento de Audiencias")
+    st.title("Agendamiento de Audiencia")
     st.subheader("Cargue de Documentos con Agentes AI .")
     uploaded_file = st.file_uploader("Upload an article",
                                      type=("pdf"),
@@ -445,8 +486,8 @@ if uploaded_file:
         tab2.write("Este agente utiliza inteligencia artificial para interpretar y analizar el contenido de tu PDF.")
         tab2.image("https://i.giphy.com/0lGd2OXXHe4tFhb7Wh.webp", caption="AI en acción", output_format="auto")
         
-        prompt_jsonsimple = "identifica los grupos de informacion o entidades de negocio y regeresalo en formato json simple clave valor con los datos contenidos en el archivo adjunto"
-        
+        prompt = "identifica los datos de convocantes, convocados, hechos ,fecha de audicencia, jornada am o pm del archivo adjunto"
+        system_instructions = "Por favor, analiza el documento y extrae la información relevante según las instrucciones."
         selected_llm = st.session_state['selected_model']
         
         btn_agente = tab2.button("Iniciar Interpretación")
