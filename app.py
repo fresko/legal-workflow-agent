@@ -15,7 +15,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 dotenv.load_dotenv(override=True)
 
-# Manejo de Sessioneså
+# Manejo de Sessiones
 if 'doc_id' not in st.session_state:
     st.session_state['doc_id'] = None
 
@@ -43,6 +43,13 @@ if 'pages' not in st.session_state:
 
 if 'page_selection' not in st.session_state:
     st.session_state['page_selection'] = []
+
+# Nuevas variables de sesión para la configuración de la API
+if 'api_key' not in st.session_state:
+    st.session_state['api_key'] = ""
+
+if 'selected_model' not in st.session_state:
+    st.session_state['selected_model'] = "gemini-1.5-flash-002"
 
 # Configuración de la página de Streamlit
 st.set_page_config(
@@ -232,7 +239,6 @@ def crete_prompt(file_content,selected_llm):
         "response_schema" :  schema,
     }
     model = genai.GenerativeModel(
-        #model_name="gemini-1.5-flash-002",       
         model_name=selected_llm,       
         generation_config=generation_config,
     )
@@ -293,12 +299,29 @@ def send_webhook(webhook_url, json_data):
 
 # Configuración de la barra lateral
 with st.sidebar:
-    st.title("Formulario de Aprobación ")
+    st.title("Agedamiento de Audiencias")
     st.subheader("Cargue de Documentos con Agentes AI .")
     uploaded_file = st.file_uploader("Upload an article",
                                      type=("pdf"),
                                      on_change=new_file,
                                      help="The full-text is extracted using Gen AI Gemini,GPT4. ")
+    
+    # Configuración de API - MOVIDO AL SIDEBAR
+    st.header("Configuración de IA")
+    # Configurar API Key
+    api_key = st.text_input('GOOGLE_API_KEY', type='password', value=st.session_state['api_key'])
+    st.session_state['api_key'] = api_key
+    
+    if api_key:
+        os.environ["GOOGLE_API_KEY"] = api_key
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+    
+    # Selección de modelo
+    options = ["gemini-1.5-flash-002", "gemini-1.0-pro", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-2.0-pro-exp"]
+    selected_llm = st.selectbox("Selecciona el modelo LLM:", options, index=options.index(st.session_state['selected_model']))
+    st.session_state['selected_model'] = selected_llm
+    
+    # Resto de la configuración del sidebar
     st.header("Contenido del PDF")
     enable_text = st.toggle('Render text in PDF', value=False, disabled=not st.session_state['uploaded'],
                             help="Enable the selection and copy-paste on the PDF")
@@ -421,56 +444,32 @@ if uploaded_file:
         tab2.subheader("AGENT IA - Utiliza el agente para Interpretar tu PDF")
         tab2.write("Este agente utiliza inteligencia artificial para interpretar y analizar el contenido de tu PDF.")
         tab2.image("https://i.giphy.com/0lGd2OXXHe4tFhb7Wh.webp", caption="AI en acción", output_format="auto")
-        GOOGLE_API_KEY = tab2.text_input('GOOGLE_API_KEY', type='password')
-        os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
-        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-        prompt_jsonsimple = "identifica los grupos de informacion o entidades de negocio y regeresalo en formato json simple clave valor con los datos  contenidos en el archivo adjunto"
-              
-        # Crear una lista de tres valores
-        options = ["gemini-1.5-flash-002", "gemini-1.0-pro", "gemini-1.5-pro","gemini-2.0-flash-exp","gemini-2.0-pro-exp"]
         
-        # Crear un selectbox en Streamlit
-        selected_llm = tab2.selectbox("Selecciona el modelo LLM:", options)
+        prompt_jsonsimple = "identifica los grupos de informacion o entidades de negocio y regeresalo en formato json simple clave valor con los datos contenidos en el archivo adjunto"
         
-        # Mostrar el valor del ítem seleccionado
-        st.write(f"Has seleccionado: {selected_llm}")
+        selected_llm = st.session_state['selected_model']
         
         btn_agente = tab2.button("Iniciar Interpretación")
         if btn_agente:
-            tab2.write("Interpretación iniciada...")
-            with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                file_path = tmp_file.name
-            response_llm = crete_prompt(file_path,selected_llm)
-            json_data = text_to_json(response_llm.text)
-            tab2.subheader("Visualizador de JSON")   
-            tab2.json(json_data, expanded=False)
-            
-            # Añade esto después de procesar el JSON en tu código existente
-            #with col3:
-            if json_data:
-                print(f"in bottom")
-                response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", json_data) 
-                if response and response.status_code == 200:
-                            tab2.success(f"Datos enviados correctamente al sistema externo. Respuesta: {response.text}")
-                else:
-                            tab2.error("Error al enviar los datos al sistema externo.")
-
-                #webhook_url = tab2.text_input('URL del Webhook', 'https://ejemplo.com/webhook')
-                #send_webhook_button = tab2.button("Enviar datos al sistema externo")
+            if not st.session_state['api_key']:
+                tab2.error("Por favor, configure la API key en la barra lateral antes de continuar.")
+            else:
+                tab2.write("Interpretación iniciada...")
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                    tmp_file.write(uploaded_file.getvalue())
+                    file_path = tmp_file.name
+                response_llm = crete_prompt(file_path, st.session_state['selected_model'])
+                json_data = text_to_json(response_llm.text)
+                tab2.subheader("Visualizador de JSON")   
+                tab2.json(json_data, expanded=False)
                 
-        #if send_webhook_button:
-                       
-                   # with st.spinner("Enviando datos al webhook..."):
-                        #response = send_webhook(webhook_url, json_data) 
-                        #if response and response.status_code == 200:
-                            #tab2.success(f"Datos enviados correctamente al sistema externo. Respuesta: {response.text}")
-                        #else:
-                            #tab2.error("Error al enviar los datos al sistema externo.")
-
-   # with col3:
-        #if btn_agente:
-            #create_dynamic_form(json_data, tab2)
+                if json_data:
+                    print(f"in bottom")
+                    response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", json_data) 
+                    if response and response.status_code == 200:
+                        tab2.success(f"Datos enviados correctamente al sistema externo. Respuesta: {response.text}")
+                    else:
+                        tab2.error("Error al enviar los datos al sistema externo.")
 
 
 
