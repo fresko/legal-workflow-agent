@@ -12,6 +12,8 @@ from streamlit_pdf_viewer import pdf_viewer
 import google.generativeai as genai
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+import pandas as pd
+import datetime
 
 dotenv.load_dotenv(override=True)
 
@@ -149,6 +151,103 @@ def create_dynamic_form(json_data, tab):
     submit_button = form_approve.form_submit_button(label='Enviar')
     if submit_button:
         tab.success("Formulario enviado exitosamente!")
+
+def tabular_validation_form(json_data, tab):
+    """Formulario de validación usando tablas editables para personas y campos simples para fechas"""
+    
+    tab.subheader("📋 Validación de Datos en Formato Tabular")
+    
+    # Convocantes como dataframe
+    tab.subheader("Convocantes")
+    convocantes = json_data.get("convocantes", [])
+    if not convocantes:
+        convocantes = [{"rol": "", "nombre": "", "email": "", "telefono": ""}]
+    
+    # Convertir a dataframe
+    df_convocantes = pd.DataFrame(convocantes)
+    edited_df_convocantes = tab.data_editor(df_convocantes, 
+                                          num_rows="dynamic", 
+                                          use_container_width=True,
+                                          height=200,
+                                          width=900,
+                                          column_config={
+                                              "rol": st.column_config.TextColumn("Rol", width="medium"),
+                                              "nombre": st.column_config.TextColumn("Nombre", width="medium"),
+                                              "email": st.column_config.TextColumn("Email", width="medium"),
+                                              "telefono": st.column_config.TextColumn("Teléfono", width="medium")
+                                          })
+    
+    # Convocados como dataframe
+    tab.subheader("Convocados")
+    convocados = json_data.get("convocados", [])
+    if not convocados:
+        convocados = [{"rol": "", "nombre": "", "mail": "", "telefono": ""}]
+    
+    # Convertir a dataframe
+    df_convocados = pd.DataFrame(convocados)
+    edited_df_convocados = tab.data_editor(df_convocados, 
+                                         num_rows="dynamic", 
+                                         use_container_width=True,
+                                         height=200,
+                                         width=900,
+                                         column_config={
+                                             "rol": st.column_config.TextColumn("Rol", width="medium"),
+                                             "nombre": st.column_config.TextColumn("Nombre", width="medium"),
+                                             "mail": st.column_config.TextColumn("Email", width="medium"),
+                                             "telefono": st.column_config.TextColumn("Teléfono", width="medium")
+                                         })
+    
+    # Fecha y hora
+    col1, col2 = tab.columns(2)
+    with col1:
+        fecha_str = json_data.get("fecha_conciliacion", "")
+        try:
+            fecha_def = datetime.datetime.strptime(fecha_str, "%Y-%m-%d").date() if fecha_str else datetime.date.today()
+        except ValueError:
+            fecha_def = datetime.date.today()
+        fecha = st.date_input("Fecha de conciliación", value=fecha_def)
+    
+    with col2:
+        hora_str = json_data.get("hora_conciliacion", "")
+        try:
+            hora_def = datetime.datetime.strptime(hora_str, "%H:%M").time() if hora_str else datetime.datetime.now().time()
+        except ValueError:
+            hora_def = datetime.datetime.now().time()
+        hora = st.time_input("Hora de conciliación", value=hora_def)
+    
+    # Jornada AM/PM
+    jornada = json_data.get("jornada AM/PM", "")
+    jornada_options = ["AM", "PM"]
+    selected_jornada = tab.selectbox(
+        "Jornada",
+        options=jornada_options,
+        index=jornada_options.index(jornada) if jornada in jornada_options else 0
+    )
+    
+    # Botón para enviar
+    if tab.button("Agendar Conciliación"):
+        # Convertir dataframes a listas de diccionarios
+        convocantes_dict = edited_df_convocantes.to_dict(orient='records')
+        convocados_dict = edited_df_convocados.to_dict(orient='records')
+        
+        # Construir datos para enviar
+        data_to_send = {
+            "convocantes": convocantes_dict,
+            "convocados": convocados_dict,
+            "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
+            "hora_conciliacion": hora.strftime("%H:%M"),
+            "jornada AM/PM": selected_jornada
+        }
+        
+        response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", data_to_send)
+        if response and response.status_code == 200:
+            tab.success("✅ Cita de conciliación agendada correctamente.")
+        else:
+            tab.error("❌ Error al agendar la cita de conciliación.")
+        
+        return data_to_send
+    
+    return None
 
 def upload_to_gemini(path, mime_type=None):
     file = genai.upload_file(path, mime_type=mime_type)
@@ -358,7 +457,7 @@ with st.sidebar:
         genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
     
     # Selección de modelo
-    options = ["gemini-1.5-flash-002", "gemini-1.0-pro", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-2.0-pro-exp"]
+    options = ["gemini-1.5-flash-002", "gemini-1.0-pro", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-2.0-pro-exp","gemini-2.5-pro-preview-03-25", "gemini-2.5-flash-preview-04-17"]
     selected_llm = st.selectbox("Selecciona el modelo LLM:", options, index=options.index(st.session_state['selected_model']))
     st.session_state['selected_model'] = selected_llm
     
@@ -501,16 +600,7 @@ if uploaded_file:
                     file_path = tmp_file.name
                 response_llm = crete_prompt(file_path, st.session_state['selected_model'])
                 json_data = text_to_json(response_llm.text)
-                #tab2.subheader("Visualizador de JSON")   
-                #tab2.json(json_data, expanded=False)
-                
-                # if json_data:
-                #     print(f"in bottom")
-                #     response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", json_data) 
-                #     if response and response.status_code == 200:
-                #         tab2.success(f"Datos enviados correctamente al sistema externo. Respuesta: {response.text}")
-                #     else:
-                #         tab2.error("Error al enviar los datos al sistema externo.")
+                tabular_validation_form(json_data, tab2)
 
 
 
