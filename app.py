@@ -53,6 +53,13 @@ if 'api_key' not in st.session_state:
 if 'selected_model' not in st.session_state:
     st.session_state['selected_model'] = "gemini-1.5-flash-002"
 
+# Inicializa variables de estado para control de flujo
+if 'fase_proceso' not in st.session_state:
+    st.session_state['fase_proceso'] = 'inicial'  # Posibles valores: inicial, interpretado, agendado
+    
+if 'datos_interpretacion' not in st.session_state:
+    st.session_state['datos_interpretacion'] = None
+
 # Configuración de la página de Streamlit
 st.set_page_config(
     page_title="AGente AI - Documentos/Facturas",
@@ -223,31 +230,20 @@ def tabular_validation_form(json_data, tab):
         options=jornada_options,
         index=jornada_options.index(jornada) if jornada in jornada_options else 0
     )
-    
-    # Botón para enviar
-    if tab.button("Agendar Conciliación"):
-        # Convertir dataframes a listas de diccionarios
-        convocantes_dict = edited_df_convocantes.to_dict(orient='records')
-        convocados_dict = edited_df_convocados.to_dict(orient='records')
-        
-        # Construir datos para enviar
-        data_to_send = {
+    # Convertir dataframes a listas de diccionarios
+    convocantes_dict = edited_df_convocantes.to_dict(orient='records')
+    convocados_dict = edited_df_convocados.to_dict(orient='records')
+      # Construir datos para enviar
+    data_to_send = {
             "convocantes": convocantes_dict,
             "convocados": convocados_dict,
             "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
             "hora_conciliacion": hora.strftime("%H:%M"),
             "jornada AM/PM": selected_jornada
         }
-        
-        response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", data_to_send)
-        if response and response.status_code == 200:
-            tab.success("✅ Cita de conciliación agendada correctamente.")
-        else:
-            tab.error("❌ Error al agendar la cita de conciliación.")
-        
-        return data_to_send
+    return data_to_send
     
-    return None
+    
 
 def upload_to_gemini(path, mime_type=None):
     file = genai.upload_file(path, mime_type=mime_type)
@@ -580,29 +576,67 @@ if uploaded_file:
                     resolution_boost=resolution_boost
                 )
 
-    with col2:
+    # Render siempre los botones, pero habilita/deshabilita según estado
+    with tab2:
         tab2.subheader("AGENT IA - Utiliza el agente para Interpretar tu PDF")
         tab2.write("Este agente utiliza inteligencia artificial para interpretar y analizar el contenido de tu PDF.")
-        tab2.image("https://i.giphy.com/0lGd2OXXHe4tFhb7Wh.webp", caption="AI en acción", output_format="auto")
+        tab2.image("img/doc_extradata.png", caption="IA en acción", output_format="auto")
         
-        prompt = "identifica los datos de convocantes, convocados, hechos ,fecha de audicencia, jornada am o pm del archivo adjunto"
-        system_instructions = "Por favor, analiza el documento y extrae la información relevante según las instrucciones."
-        selected_llm = st.session_state['selected_model']
+        # Dividir en columnas para mostrar el estado actual
+        col_estado, col_fase = tab2.columns([3, 1])
+        with col_fase:
+            if st.session_state['fase_proceso'] != 'inicial':
+                tab2.success(f"Fase: {st.session_state['fase_proceso'].title()}")
         
-        btn_agente = tab2.button("Iniciar Interpretación")
+        # Primer botón - Siempre visible
+        btn_agente = tab2.button("Iniciar Interpretación", 
+                                 disabled=not st.session_state['api_key'] or not uploaded_file)
+        
         if btn_agente:
             if not st.session_state['api_key']:
                 tab2.error("Por favor, configure la API key en la barra lateral antes de continuar.")
             else:
                 tab2.write("Interpretación iniciada...")
+                # Código de procesamiento...
                 with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                     tmp_file.write(uploaded_file.getvalue())
                     file_path = tmp_file.name
                 response_llm = crete_prompt(file_path, st.session_state['selected_model'])
                 json_data = text_to_json(response_llm.text)
-                tabular_validation_form(json_data, tab2)
-
-
+                
+                # Guardar datos en el state para uso posterior
+                st.session_state['datos_interpretacion'] = json_data
+                st.session_state['fase_proceso'] = 'interpretado'
+                # Force rerun para actualizar la interfaz
+                st.rerun()
+        
+        # Mostrar formulario si ya se interpretó
+        if st.session_state['fase_proceso'] == 'interpretado' or st.session_state['fase_proceso'] == 'agendado':
+            # Mostrar el formulario de validación
+            data_to_send = tabular_validation_form(st.session_state['datos_interpretacion'], tab2)
+            st.session_state['data_to_send'] = data_to_send
+        
+        # Segundo botón - Visible solo después de interpretación
+        btn_agenda = tab2.button("Agendar Conciliación 📧", 
+                                disabled=st.session_state['fase_proceso'] == 'inicial')
+        
+        if btn_agenda and st.session_state['fase_proceso'] == 'interpretado':
+            print("Enviando datos al webhook...")
+            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", 
+                                   st.session_state['data_to_send'])
+            if response and response.status_code == 200:
+                tab2.success("✅ Cita de conciliación agendada correctamente.")
+                st.session_state['fase_proceso'] = 'agendado'
+            else:
+                tab2.error("❌ Error al agendar la cita de conciliación.")
+        
+        # Botón para reiniciar el proceso si ya se agendó
+        if st.session_state['fase_proceso'] == 'agendado':
+            if tab2.button("Iniciar nuevo agendamiento"):
+                st.session_state['fase_proceso'] = 'inicial'
+                st.session_state['datos_interpretacion'] = None
+                st.session_state['data_to_send'] = None
+                st.rerun()
 
 
 
