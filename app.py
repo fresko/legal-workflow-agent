@@ -4,7 +4,7 @@ import time
 import tempfile
 from hashlib import blake2b
 from tempfile import NamedTemporaryFile
-import dotenv
+from dotenv import load_dotenv
 import requests
 import streamlit as st
 from flatten_json import flatten 
@@ -15,7 +15,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import pandas as pd
 import datetime
 
-dotenv.load_dotenv(override=True)
 
 # Manejo de Sessiones
 if 'doc_id' not in st.session_state:
@@ -230,20 +229,25 @@ def tabular_validation_form(json_data, tab):
         options=jornada_options,
         index=jornada_options.index(jornada) if jornada in jornada_options else 0
     )
+    
+    # Extraer correos de los convocados
+    convocados_emails = [convocado.get("mail", "") for convocado in edited_df_convocados.to_dict(orient='records') if "mail" in convocado]
+    
     # Convertir dataframes a listas de diccionarios
     convocantes_dict = edited_df_convocantes.to_dict(orient='records')
     convocados_dict = edited_df_convocados.to_dict(orient='records')
-      # Construir datos para enviar
+    
+    # Construir datos para enviar
     data_to_send = {
-            "convocantes": convocantes_dict,
-            "convocados": convocados_dict,
-            "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
-            "hora_conciliacion": hora.strftime("%H:%M"),
-            "jornada AM/PM": selected_jornada
-        }
+        "convocantes": convocantes_dict,
+        "convocados": convocados_dict,
+        "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
+        "hora_conciliacion": hora.strftime("%H:%M"),
+        "jornada AM/PM": selected_jornada,
+        "correos_convocados": convocados_emails  # Agregar lista de correos de convocados
+    }
+    
     return data_to_send
-    
-    
 
 def upload_to_gemini(path, mime_type=None):
     file = genai.upload_file(path, mime_type=mime_type)
@@ -447,7 +451,7 @@ with st.sidebar:
     # Configurar API Key
     api_key = st.text_input('GOOGLE_API_KEY', type='password', value=st.session_state['api_key'])
     st.session_state['api_key'] = api_key
-    
+
     if api_key:
         os.environ["GOOGLE_API_KEY"] = api_key
         genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
@@ -618,12 +622,12 @@ if uploaded_file:
         
         # Segundo botón - Visible solo después de interpretación
         btn_agenda = tab2.button("Agendar Conciliación 📧", 
-                                disabled=st.session_state['fase_proceso'] == 'inicial')
-        
+                                 disabled=st.session_state['fase_proceso'] == 'inicial')
+
         if btn_agenda and st.session_state['fase_proceso'] == 'interpretado':
             print("Enviando datos al webhook...")
-            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", 
-                                   st.session_state['data_to_send'])
+            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/a4a9b9f0-5ed7-4c80-bebe-09a9d955ae2f", 
+                                    st.session_state['data_to_send'])
             if response and response.status_code == 200:
                 tab2.success("✅ Cita de conciliación agendada correctamente.")
                 st.session_state['fase_proceso'] = 'agendado'
