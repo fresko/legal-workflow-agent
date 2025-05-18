@@ -462,16 +462,16 @@ with st.sidebar:
     enable_text = st.toggle('Render text in PDF', value=False, disabled=not st.session_state['uploaded'],
                             help="Enable the selection and copy-paste on the PDF")
     st.header("Documento - Secciones")
-    highlight_title = st.toggle('Hotel', value=True, disabled=not st.session_state['uploaded'])
-    highlight_person_names = st.toggle('General', value=True, disabled=not st.session_state['uploaded'])
-    highlight_affiliations = st.toggle('Habitaciones', value=True, disabled=not st.session_state['uploaded'])
-    highlight_head = st.toggle('Acomodaciones', value=True, disabled=not st.session_state['uploaded'])
-    highlight_sentences = st.toggle('Compra', value=False, disabled=not st.session_state['uploaded'])
-    highlight_paragraphs = st.toggle('Venta', value=True, disabled=not st.session_state['uploaded'])
-    highlight_notes = st.toggle('Notes', value=True, disabled=not st.session_state['uploaded'])
-    highlight_formulas = st.toggle('Politicas', value=True, disabled=not st.session_state['uploaded'])
-    highlight_figures = st.toggle('Figutas - Tablas', value=True, disabled=not st.session_state['uploaded'])
-    highlight_callout = st.toggle('Refe', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_title = st.toggle('Hotel', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_person_names = st.toggle('General', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_affiliations = st.toggle('Habitaciones', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_head = st.toggle('Acomodaciones', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_sentences = st.toggle('Compra', value=False, disabled=not st.session_state['uploaded'])
+    #highlight_paragraphs = st.toggle('Venta', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_notes = st.toggle('Notes', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_formulas = st.toggle('Politicas', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_figures = st.toggle('Figutas - Tablas', value=True, disabled=not st.session_state['uploaded'])
+    #highlight_callout = st.toggle('Refe', value=True, disabled=not st.session_state['uploaded'])
     highlight_citations = st.toggle('Citas', value=True, disabled=not st.session_state['uploaded'])
     st.header("Anotaciones")
     annotation_thickness = st.slider(label="Annotation boxes border thickness", min_value=1, max_value=6, value=1)
@@ -492,7 +492,7 @@ with st.sidebar:
             key=1
         )
     st.header("Soporte y Ayuda")
-    st.markdown("""Cargue de Alojammiento con Agentes AI - Gemini Google""")
+    st.markdown("""Cargue de Documentos con Agentes AI - Gemini Google""")
     if st.session_state['git_rev'] != "unknown":
         st.markdown("**Revision number**: [" + st.session_state[
             'git_rev'] + "](http://digitalmagia.com" + st.session_state['git_rev'] + ")")
@@ -530,28 +530,28 @@ if uploaded_file:
     with tab1:
         with st.spinner("Rendering PDF document"):
             annotations = st.session_state['annotations']
-            if not highlight_sentences:
-                annotations = list(filter(lambda a: a['type'] != 's', annotations))
-            if not highlight_paragraphs:
-                annotations = list(filter(lambda a: a['type'] != 'p', annotations))
-            if not highlight_title:
-                annotations = list(filter(lambda a: a['type'] != 'title', annotations))
-            if not highlight_head:
-                annotations = list(filter(lambda a: a['type'] != 'head', annotations))
-            if not highlight_citations:
-                annotations = list(filter(lambda a: a['type'] != 'biblStruct', annotations))
-            if not highlight_notes:
-                annotations = list(filter(lambda a: a['type'] != 'note', annotations))
-            if not highlight_callout:
-                annotations = list(filter(lambda a: a['type'] != 'ref', annotations))
-            if not highlight_formulas:
-                annotations = list(filter(lambda a: a['type'] != 'formula', annotations))
-            if not highlight_person_names:
-                annotations = list(filter(lambda a: a['type'] != 'persName', annotations))
-            if not highlight_figures:
-                annotations = list(filter(lambda a: a['type'] != 'figure', annotations))
-            if not highlight_affiliations:
-                annotations = list(filter(lambda a: a['type'] != 'affiliation', annotations))
+            # if not highlight_sentences:
+            #     annotations = list(filter(lambda a: a['type'] != 's', annotations))
+            # if not highlight_paragraphs:
+            #     annotations = list(filter(lambda a: a['type'] != 'p', annotations))
+            # if not highlight_title:
+            #     annotations = list(filter(lambda a: a['type'] != 'title', annotations))
+            # if not highlight_head:
+            #     annotations = list(filter(lambda a: a['type'] != 'head', annotations))
+            # if not highlight_citations:
+            #     annotations = list(filter(lambda a: a['type'] != 'biblStruct', annotations))
+            # if not highlight_notes:
+            #     annotations = list(filter(lambda a: a['type'] != 'note', annotations))
+            # if not highlight_callout:
+            #     annotations = list(filter(lambda a: a['type'] != 'ref', annotations))
+            # if not highlight_formulas:
+            #     annotations = list(filter(lambda a: a['type'] != 'formula', annotations))
+            # if not highlight_person_names:
+            #     annotations = list(filter(lambda a: a['type'] != 'persName', annotations))
+            # if not highlight_figures:
+            #     annotations = list(filter(lambda a: a['type'] != 'figure', annotations))
+            # if not highlight_affiliations:
+            #     annotations = list(filter(lambda a: a['type'] != 'affiliation', annotations))
             if height > -1:
                 pdf_viewer(
                     input=st.session_state['binary'],
@@ -622,7 +622,7 @@ if uploaded_file:
         
         if btn_agenda and st.session_state['fase_proceso'] == 'interpretado':
             print("Enviando datos al webhook...")
-            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", 
+            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/a4a9b9f0-5ed7-4c80-bebe-09a9d955ae2f", 
                                    st.session_state['data_to_send'])
             if response and response.status_code == 200:
                 tab2.success("✅ Cita de conciliación agendada correctamente.")
