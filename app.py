@@ -163,6 +163,14 @@ def tabular_validation_form(json_data, tab):
     
     tab.subheader("📋 Validación de Datos en Formato Tabular")
     
+    # Nuevos campos para título y resumen de la reunión
+    tab.subheader("Información de la Reunión")
+    titulo = json_data.get("titulo_reunion", "")
+    resumen = json_data.get("resumen_reunion", "")
+    
+    nuevo_titulo = tab.text_input("Título de la reunión", value=titulo)
+    nuevo_resumen = tab.text_area("Resumen de la reunión", value=resumen, height=150)
+    
     # Convocantes como dataframe
     tab.subheader("Convocantes")
     convocantes = json_data.get("convocantes", [])
@@ -239,12 +247,14 @@ def tabular_validation_form(json_data, tab):
     
     # Construir datos para enviar
     data_to_send = {
+        "titulo_reunion": nuevo_titulo,
+        "resumen_reunion": nuevo_resumen,
         "convocantes": convocantes_dict,
         "convocados": convocados_dict,
         "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
         "hora_conciliacion": hora.strftime("%H:%M"),
         "jornada AM/PM": selected_jornada,
-        "correos_convocados": convocados_emails  # Agregar lista de correos de convocados
+        "correos_convocados": convocados_emails  # Lista de correos de convocados
     }
     
     return data_to_send
@@ -282,11 +292,13 @@ def crete_prompt(file_content, selected_llm, prompt=None, system_instructions=No
     """
     # Prompt por defecto si no se proporciona uno
     if prompt is None:
-        prompt = "identifica los datos de convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
+        prompt = "identifica los datos de convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto. Además, genera un título descriptivo para la reunión y un breve resumen sobre el propósito o tema principal de la reunión."
     
     schema = {
     "type": "object",
     "properties": {
+        "titulo_reunion": {"type": "string"},  # Nuevo campo para el título
+        "resumen_reunion": {"type": "string"},  # Nuevo campo para el resumen
         "convocantes": {
         "type": "array",
         "items": {
@@ -341,16 +353,15 @@ def crete_prompt(file_content, selected_llm, prompt=None, system_instructions=No
      "hora_conciliacion": {
         "type": "string"
      },
-     "fecha_conciliacion": {
-        "type": "string"
-     },
      "jornada AM/PM": {
         "type": "string"
      }
     },  
     "required": [
         "convocantes",
-        "convocados"
+        "convocados",
+        "titulo_reunion",
+        "resumen_reunion"
     ]
     }
     
@@ -474,8 +485,8 @@ with st.sidebar:
     highlight_paragraphs = st.toggle('Venta', value=True, disabled=not st.session_state['uploaded'])
     highlight_notes = st.toggle('Notes', value=True, disabled=not st.session_state['uploaded'])
     highlight_formulas = st.toggle('Politicas', value=True, disabled=not st.session_state['uploaded'])
-    highlight_figures = st.toggle('Figutas - Tablas', value=True, disabled=not st.session_state['uploaded'])
-    highlight_callout = st.toggle('Refe', value=True, disabled=not st.session_state['uploaded'])
+    highlight_figures = st.toggle('Refe', value=True, disabled=not st.session_state['uploaded'])
+    highlight_callout = st.toggle('Figutas - Tablas', value=True, disabled=not st.session_state['uploaded'])
     highlight_citations = st.toggle('Citas', value=True, disabled=not st.session_state['uploaded'])
     st.header("Anotaciones")
     annotation_thickness = st.slider(label="Annotation boxes border thickness", min_value=1, max_value=6, value=1)
