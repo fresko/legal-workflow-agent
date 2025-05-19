@@ -4,7 +4,7 @@ import time
 import tempfile
 from hashlib import blake2b
 from tempfile import NamedTemporaryFile
-import dotenv
+from dotenv import load_dotenv
 import requests
 import streamlit as st
 from flatten_json import flatten 
@@ -15,7 +15,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import pandas as pd
 import datetime
 
-dotenv.load_dotenv(override=True)
 
 # Manejo de Sessiones
 if 'doc_id' not in st.session_state:
@@ -164,6 +163,14 @@ def tabular_validation_form(json_data, tab):
     
     tab.subheader("📋 Validación de Datos en Formato Tabular")
     
+    # Nuevos campos para título y resumen de la reunión
+    tab.subheader("Información de la Reunión")
+    titulo = json_data.get("titulo_reunion", "")
+    resumen = json_data.get("resumen_reunion", "")
+    
+    nuevo_titulo = tab.text_input("Título de la reunión", value=titulo)
+    nuevo_resumen = tab.text_area("Resumen de la reunión", value=resumen, height=150)
+    
     # Convocantes como dataframe
     tab.subheader("Convocantes")
     convocantes = json_data.get("convocantes", [])
@@ -230,20 +237,27 @@ def tabular_validation_form(json_data, tab):
         options=jornada_options,
         index=jornada_options.index(jornada) if jornada in jornada_options else 0
     )
+    
+    # Extraer correos de los convocados
+    convocados_emails = [convocado.get("mail", "") for convocado in edited_df_convocados.to_dict(orient='records') if "mail" in convocado]
+    
     # Convertir dataframes a listas de diccionarios
     convocantes_dict = edited_df_convocantes.to_dict(orient='records')
     convocados_dict = edited_df_convocados.to_dict(orient='records')
-      # Construir datos para enviar
+    
+    # Construir datos para enviar
     data_to_send = {
-            "convocantes": convocantes_dict,
-            "convocados": convocados_dict,
-            "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
-            "hora_conciliacion": hora.strftime("%H:%M"),
-            "jornada AM/PM": selected_jornada
-        }
+        "titulo_reunion": nuevo_titulo,
+        "resumen_reunion": nuevo_resumen,
+        "convocantes": convocantes_dict,
+        "convocados": convocados_dict,
+        "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
+        "hora_conciliacion": hora.strftime("%H:%M"),
+        "jornada AM/PM": selected_jornada,
+        "correos_convocados": convocados_emails  # Lista de correos de convocados
+    }
+    
     return data_to_send
-    
-    
 
 def upload_to_gemini(path, mime_type=None):
     file = genai.upload_file(path, mime_type=mime_type)
@@ -278,11 +292,13 @@ def crete_prompt(file_content, selected_llm, prompt=None, system_instructions=No
     """
     # Prompt por defecto si no se proporciona uno
     if prompt is None:
-        prompt = "identifica los datos de convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
+        prompt = "identifica los datos de convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto. Además, genera un título descriptivo para la reunión y un breve resumen sobre el propósito o tema principal de la reunión."
     
     schema = {
     "type": "object",
     "properties": {
+        "titulo_reunion": {"type": "string"},  # Nuevo campo para el título
+        "resumen_reunion": {"type": "string"},  # Nuevo campo para el resumen
         "convocantes": {
         "type": "array",
         "items": {
@@ -337,16 +353,15 @@ def crete_prompt(file_content, selected_llm, prompt=None, system_instructions=No
      "hora_conciliacion": {
         "type": "string"
      },
-     "fecha_conciliacion": {
-        "type": "string"
-     },
      "jornada AM/PM": {
         "type": "string"
      }
     },  
     "required": [
         "convocantes",
-        "convocados"
+        "convocados",
+        "titulo_reunion",
+        "resumen_reunion"
     ]
     }
     
@@ -447,7 +462,7 @@ with st.sidebar:
     # Configurar API Key
     api_key = st.text_input('GOOGLE_API_KEY', type='password', value=st.session_state['api_key'])
     st.session_state['api_key'] = api_key
-    
+
     if api_key:
         os.environ["GOOGLE_API_KEY"] = api_key
         genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
@@ -470,8 +485,8 @@ with st.sidebar:
     highlight_paragraphs = st.toggle('Venta', value=True, disabled=not st.session_state['uploaded'])
     highlight_notes = st.toggle('Notes', value=True, disabled=not st.session_state['uploaded'])
     highlight_formulas = st.toggle('Politicas', value=True, disabled=not st.session_state['uploaded'])
-    highlight_figures = st.toggle('Figutas - Tablas', value=True, disabled=not st.session_state['uploaded'])
-    highlight_callout = st.toggle('Refe', value=True, disabled=not st.session_state['uploaded'])
+    highlight_figures = st.toggle('Refe', value=True, disabled=not st.session_state['uploaded'])
+    highlight_callout = st.toggle('Figutas - Tablas', value=True, disabled=not st.session_state['uploaded'])
     highlight_citations = st.toggle('Citas', value=True, disabled=not st.session_state['uploaded'])
     st.header("Anotaciones")
     annotation_thickness = st.slider(label="Annotation boxes border thickness", min_value=1, max_value=6, value=1)
@@ -618,12 +633,12 @@ if uploaded_file:
         
         # Segundo botón - Visible solo después de interpretación
         btn_agenda = tab2.button("Agendar Conciliación 📧", 
-                                disabled=st.session_state['fase_proceso'] == 'inicial')
-        
+                                 disabled=st.session_state['fase_proceso'] == 'inicial')
+
         if btn_agenda and st.session_state['fase_proceso'] == 'interpretado':
             print("Enviando datos al webhook...")
-            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/6a27e3f7-2323-4341-adf3-e5baa613729c", 
-                                   st.session_state['data_to_send'])
+            response = send_webhook("https://magia.app.n8n.cloud/webhook-test/a4a9b9f0-5ed7-4c80-bebe-09a9d955ae2f", 
+                                    st.session_state['data_to_send'])
             if response and response.status_code == 200:
                 tab2.success("✅ Cita de conciliación agendada correctamente.")
                 st.session_state['fase_proceso'] = 'agendado'
