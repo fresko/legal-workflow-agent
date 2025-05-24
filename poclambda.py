@@ -1,0 +1,224 @@
+import json
+import os
+import boto3
+import tempfile
+import requests
+import google.generativeai as genai
+import urllib.parse
+from urllib.parse import unquote_plus
+
+print('Loading functionn 2')
+
+# Configurar API key de Google Gemini desde variable de entorno
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+MODEL_NAME = os.environ.get('MODEL_NAME')
+
+# Inicializar el cliente de S3
+s3_client = boto3.client('s3')
+
+# Configurar Gemini API
+genai.configure(api_key=GOOGLE_API_KEY)
+
+##
+##
+def lambda_handler(event, context):
+    print("Received event: " + json.dumps(event, indent=2))
+
+    # Get the object from the event and show its content type
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding='utf-8')
+    webhook_url = event.get('webhook_url', WEBHOOK_URL)
+    try:
+        response = s3_client.get_object(Bucket=bucket, Key=key)     
+        print("CONTENT TYPE: " + response['ContentType'])
+        print(f"1.Procesando archivo: s3://{bucket}/{key}")
+         # Extraer parámetros del evento
+        #bucket = event.get('bucket')
+        #key = event.get('key')
+        #webhook_url = event.get('webhook_url', WEBHOOK_URL)
+        
+        # Validar que se recibieron los parámetros necesarios
+        #if not bucket or not key:
+        #    return {
+        #        'statusCode': 400,
+        #        'body': json.dumps({
+        #            'error': 'Se requieren los parámetros "bucket" y "key"'
+        #        })
+        #    }
+         # Validar que se recibieron los parámetros necesarios
+        
+        
+        # Si la clave viene codificada en URL, decodificarla
+        #key = unquote_plus(key)
+        
+        print(f"2.Procesando archivo: s3://{bucket}/{key}")
+        
+         # Descargar el archivo de S3 a un archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            try:
+                s3_client.download_file(bucket, key, tmp_file.name)
+            except s3_client.exceptions.NoSuchKey:
+                raise Exception(f"El archivo '{key}' no existe en el bucket '{bucket}'")
+            except s3_client.exceptions.ClientError as e:
+                raise Exception(f"Error al descargar el archivo de S3: {e}")
+            file_path = tmp_file.name
+            
+            # Validar que el archivo es un PDF
+            #if not file_path.endswith('pdf'):
+            #    raise Exception(f"El archivo '{key}' no es un archivo PDF válido")
+            
+            # Procesar el PDF con Gemini
+            response_data = process_pdf_with_gemini(file_path, MODEL_NAME)
+            
+            # Enviar los resultados al webhook
+            webhook_response = send_to_webhook(webhook_url, response_data)
+            
+            # Eliminar el archivo temporal
+            os.unlink(file_path)
+            
+            # Devolver respuesta
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'message': 'Procesamiento completado exitosamente',
+                    'pdf_data': response_data,
+                    'webhook_response': webhook_response
+                })
+            }
+        #return response['ContentType']
+    except Exception as e:
+        print(e)
+        print('Error getting object {} from bucket {}. Make sure they exist and your bucket is in the same region as this function.'.format(key, bucket))
+        raise e
+
+def process_pdf_with_gemini(file_path, model_name):
+    """
+    Procesa un archivo PDF con el modelo Gemini y extrae información estructurada.
+    
+    Args:
+        file_path: Ruta al archivo PDF temporal
+        model_name: Nombre del modelo de Gemini a utilizar
+        
+    Returns:
+        dict: Datos extraídos en formato JSON según el schema definido
+    """
+    # Definir el schema para la respuesta
+    schema = {
+        "type": "object",
+        "properties": {
+            "convocantes": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "rol": {"type": "string"},
+                        "nombre": {"type": "string"},
+                        "email": {"type": "string"},
+                        "telefono": {"type": "string"}
+                    },
+                    "required": ["email", "nombre"]
+                }
+            },
+            "convocados": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "rol": {"type": "string"},
+                        "nombre": {"type": "string"},
+                        "mail": {"type": "string"},
+                        "telefono": {"type": "string"}
+                    },
+                    "required": ["mail", "nombre"]
+                }
+            },
+            "fecha_conciliacion": {"type": "string"},
+            "hora_conciliacion": {"type": "string"},
+            "jornada AM/PM": {"type": "string"}
+        },
+        "required": ["convocantes", "convocados"]
+    }
+    
+    # Inicializar el modelo
+    model = genai.GenerativeModel(
+    model_name=model_name,
+    generation_config=generation_config,
+    )
+    
+    # Subir el archivo a Gemini
+    files = genai.upload_file(file_path, mime_type="application/pdf")
+    print(f"Uploaded file '{files.display_name}' as: {files.uri}")
+    
+    # Crear el prompt
+    prompt = "identifica los datos de ciudad(Cali o Bogota o Medellin o Barranquilla),hechos,peticiones,cuantia,convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
+
+    
+    # Crear la historia del chat
+    history = [{
+        "role": "user",
+        "parts": [
+            files,
+            prompt,
+        ],
+    }]
+    
+    # Iniciar la sesión de chat
+    chat_session = model.start_chat(history=history)
+    
+    # Enviar mensaje y obtener respuesta
+    response = chat_session.send_message("Analiza el documento según las instrucciones proporcionadas")
+    
+    # Procesar la respuesta
+    try:
+        result_json = json.loads(response.text)
+        print("Datos extraídos exitosamente")
+        return result_json
+    except json.JSONDecodeError as e:
+        print(f"Error al procesar la respuesta JSON: {e}")
+        print(f"Respuesta recibida: {response.text}")
+        raise Exception("La respuesta no es un JSON válido")
+
+def send_to_webhook(webhook_url, json_data):
+    """
+    Envía los datos extraídos a un webhook.
+    
+    Args:
+        webhook_url: URL del webhook
+        json_data: Datos en formato diccionario para enviar como JSON
+        
+    Returns:
+        dict: Información sobre la respuesta del webhook
+    """
+    try:
+        # Configurar headers para la solicitud
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Lambda-Legal-Workflow-Agent/1.0'
+        }
+        
+        print(f"Enviando datos al webhook: {webhook_url}")
+        
+        # Realizar la petición POST
+        response = requests.post(
+            webhook_url,
+            data=json.dumps(json_data),
+            headers=headers
+        )
+        
+        # Verificar si la petición fue exitosa
+        response.raise_for_status()
+        
+        print(f"Webhook enviado con éxito. Código de estado: {response.status_code}")
+        
+        return {
+            'statusCode': response.status_code,
+            'response': response.text
+        }
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error al enviar el webhook: {e}")
+        raise Exception(f"Error en la solicitud al webhook: {str(e)}")
+
+
+

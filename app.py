@@ -164,6 +164,28 @@ def tabular_validation_form(json_data, tab):
     
     tab.subheader("📋 Validación de Datos en Formato Tabular")
     
+    # Campos adicionales: ciudad, hechos, peticiones, cuantía
+    tab.subheader("Datos del Caso")
+    
+    # Recuperar valores existentes o usar cadenas vacías
+    ciudad = json_data.get("ciudad", "")
+    hechos = json_data.get("hechos", "")
+    peticiones = json_data.get("peticiones", "")
+    cuantia = json_data.get("cuantia", "")
+    
+    # Campo para ciudad
+    ciudad_input = tab.text_input("Ciudad", value=ciudad)
+    
+    # Campo para cuantía
+    cuantia_input = tab.text_input("Cuantía", value=cuantia)
+    
+    # Campos para textos largos
+    tab.write("Hechos:")
+    hechos_input = tab.text_area("", value=hechos, height=150)
+    
+    tab.write("Peticiones:")
+    peticiones_input = tab.text_area("", value=peticiones, height=150)
+    
     # Convocantes como dataframe
     tab.subheader("Convocantes")
     convocantes = json_data.get("convocantes", [])
@@ -239,7 +261,12 @@ def tabular_validation_form(json_data, tab):
             "convocados": convocados_dict,
             "fecha_conciliacion": fecha.strftime("%Y-%m-%d"),
             "hora_conciliacion": hora.strftime("%H:%M"),
-            "jornada AM/PM": selected_jornada
+            "jornada AM/PM": selected_jornada,
+            # Añadir los campos adicionales
+            "ciudad": ciudad_input,
+            "hechos": hechos_input,
+            "peticiones": peticiones_input,
+            "cuantia": cuantia_input
         }
     return data_to_send
     
@@ -278,11 +305,23 @@ def crete_prompt(file_content, selected_llm, prompt=None, system_instructions=No
     """
     # Prompt por defecto si no se proporciona uno
     if prompt is None:
-        prompt = "identifica los datos de convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
+        prompt = "identifica los datos de ciudad(Cali o Bogota o Medellin o Barranquilla),hechos,peticiones,cuantia,convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
     
     schema = {
     "type": "object",
     "properties": {
+    "ciudad": {
+        "type": "string"
+        },    
+    "hechos": {
+        "type": "string"
+        },
+    "peticiones": {
+        "type": "string"
+        },
+    "cuantia": {
+        "type": "string"
+        },   
         "convocantes": {
         "type": "array",
         "items": {
