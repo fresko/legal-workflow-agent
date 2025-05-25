@@ -3,6 +3,7 @@ import boto3
 from datetime import datetime
 import time
 import os
+import uuid
 
 # Configuración de página
 st.set_page_config(
@@ -80,7 +81,7 @@ st.markdown("""
     /* Animación de deslizamiento */
     @keyframes slideUp {
         from { transform: translateY(0); opacity: 1; }
-        to { transform: translateY(-30px); opacity: 0.7; }
+        to { transform: translateY(-30px); opacity: 0.9; }
     }
     
     .slide-up {
@@ -104,7 +105,10 @@ st.markdown("""
         border-radius: 8px;
         padding: 1.5rem;
         margin-top: 2rem;
+        margin-bottom: 1rem;  /* Added margin at bottom */
         text-align: center;
+        width: 100%;  /* Ensure it takes full width of container */
+        box-sizing: border-box;  /* Include padding in width calculation */
     }
     
     .error-message {
@@ -119,6 +123,10 @@ st.markdown("""
     /* Ocultar elementos de Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    
+    /* Ocultar botón de deploy */
+    .stDeployButton {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -131,6 +139,16 @@ if 'upload_status' not in st.session_state:
     
 if 'uploaded_files' not in st.session_state:
     st.session_state['uploaded_files'] = []
+    
+if 'auto_reset' not in st.session_state:
+    st.session_state['auto_reset'] = False
+    
+if 'reset_time' not in st.session_state:
+    st.session_state['reset_time'] = None
+    
+# Añadir un key único para el uploader que cambia en cada reseteo
+if 'uploader_key' not in st.session_state:
+    st.session_state['uploader_key'] = str(uuid.uuid4())
 
 # Función para subir archivos a S3
 def upload_to_s3(file, bucket_name):
@@ -161,120 +179,115 @@ def upload_to_s3(file, bucket_name):
             "error": str(e)
         }
 
+# Función para resetear completamente el estado
+def reset_state():
+    st.session_state['upload_complete'] = False
+    st.session_state['upload_status'] = None
+    st.session_state['uploaded_files'] = []
+    st.session_state['auto_reset'] = False
+    st.session_state['reset_time'] = None
+    # Cambiar la clave del uploader para forzar su recreación
+    st.session_state['uploader_key'] = str(uuid.uuid4())
+    st.rerun()
+
 # Interfaz de usuario
 def main():
-    if not st.session_state['upload_complete']:
-        # Mostrar el formulario de carga completo
-        st.markdown('<div class="upload-container">', unsafe_allow_html=True)
-        st.markdown("<h1>Cargar Documentos</h1>", unsafe_allow_html=True)
-        st.markdown("<p class='description'>Arrastra tus archivos a la zona indicada para subirlos a la nube</p>", unsafe_allow_html=True)
-        
-        # Área de carga de archivos
-        uploaded_files = st.file_uploader(
-            "Arrastra tus documentos aquí",
-            accept_multiple_files=True,
-            type=["pdf", "doc", "docx", "jpg", "jpeg", "png"],
-            label_visibility="collapsed"
-        )
-        
-        # Botón para iniciar la carga
-        if uploaded_files:
-            button_text = f"Cargar {len(uploaded_files)} documento{'s' if len(uploaded_files) > 1 else ''}"
-            if st.button(button_text, use_container_width=True):
-                # Nombre del bucket S3
-                bucket_name = "citas-conciliacion"  # Reemplaza con tu bucket
-                
-                # Procesar cada archivo
-                progress = st.progress(0)
-                results = []
-                
-                for i, file in enumerate(uploaded_files):
-                    # Actualizar progreso
-                    progress_value = (i + 1) / len(uploaded_files)
-                    progress.progress(progress_value)
-                    
-                    # Subir a S3
-                    result = upload_to_s3(file, bucket_name)
-                    results.append(result)
-                    
-                    # Pausa breve para mostrar el progreso
-                    time.sleep(0.10)
-                
-                # Guardar resultados y cambiar estado
-                st.session_state['uploaded_files'] = results
-                st.session_state['upload_complete'] = True
-                
-                # Determinar estado general
-                has_error = any(not r['success'] for r in results)
-                st.session_state['upload_status'] = 'error' if has_error else 'success'
-                
-                # Efecto de animación y recarga
-                time.sleep(0.5)  # Brief pause for visual effect
-                st.rerun()
-        else:
-            st.button("Seleccionar documentos", use_container_width=True, disabled=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Auto-reset después de mostrar mensaje (2.5 segundos)
+    if st.session_state['auto_reset'] and st.session_state['reset_time'] is not None:
+        if datetime.now().timestamp() - st.session_state['reset_time'] > 2.5:
+            reset_state()
     
+    # Contenedor principal
+    container_class = "upload-container" if not st.session_state['upload_complete'] else "upload-container slide-up"
+    st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
+    st.markdown("<h1>Cargar Documentos</h1>", unsafe_allow_html=True)
+    st.markdown("<p class='description'>Arrastra tus archivos a la zona indicada para subirlos a la nube</p>", unsafe_allow_html=True)
+    
+    # Área de carga de archivos con key dinámica para forzar su recreación
+    uploaded_files = st.file_uploader(
+        "Arrastra tus documentos aquí",
+        accept_multiple_files=True,
+        type=["pdf", "doc", "docx", "jpg", "jpeg", "png"],
+        label_visibility="collapsed",
+        key=st.session_state['uploader_key']  # Usar key dinámica
+    )
+    
+    # Botón para iniciar la carga
+    if uploaded_files:
+        button_text = f"Cargar {len(uploaded_files)} documento{'s' if len(uploaded_files) > 1 else ''}"
+        
+        if st.button(button_text, icon=":material/send:", use_container_width=True):
+            process_uploaded_files(uploaded_files)
     else:
-        # Mostrar versión minimizada después de cargar
-        st.markdown('<div class="upload-container">', unsafe_allow_html=True)
-        st.markdown("<h1>Cargar Documentos</h1>", unsafe_allow_html=True)
-        st.markdown("<p class='description'>Arrastra tus archivos a la zona indicada para subirlos a la nube</p>", unsafe_allow_html=True)
-        
-        # Formulario minimizado
-        with st.expander("Cargar más documentos", expanded=False):
-            more_files = st.file_uploader(
-                "Arrastra más documentos aquí",
-                accept_multiple_files=True,
-                type=["pdf", "doc", "docx", "jpg", "jpeg", "png"],
-                key="more_files"
-            )
-            
-            if more_files:
-                if st.button("Subir archivos adicionales", use_container_width=True):
-                    # Lógica de carga similar...
-                    pass
-        
-        # Mostrar resultado de la carga
+        st.button("Seleccionar documentos", use_container_width=True, disabled=True)
+    
+    # Cerramos el contenedor principal
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Contenedor para mensajes (más pequeño que antes)
+    if st.session_state['upload_complete']:
         if st.session_state['upload_status'] == 'success':
-            st.markdown('<div class="success-message fade-in">', unsafe_allow_html=True)
-            st.markdown("### ✅ Carga Exitosa")
-            st.markdown("Los archivos se han subido correctamente al servidor.")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Mostrar archivos subidos
-            st.subheader("Archivos cargados:")
-            for file_info in st.session_state['uploaded_files']:
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.write(f"📄 {file_info['name']}")
-                with col2:
-                    if file_info['success']:
-                        st.markdown(f"[Ver archivo]({file_info['url']})")
-        
+            files_str = ", ".join([f_info['name'] for f_info in st.session_state['uploaded_files'] if f_info['success']])
+            success_html = f"""
+            <div style="background-color: rgba(57, 255, 20, 0.2); border: 1px solid #39FF14; border-radius: 8px; padding: 0.75rem; margin-top: 1.5rem; text-align: center; max-width: 500px; margin-left: auto; margin-right: auto;">
+                <h4 style="margin-top: 0; margin-bottom: 0.5rem;">Carga Exitosa</h4>
+                <p style="margin: 0.25rem 0; font-size: 0.85rem;">Los archivos se han subido correctamente al servidor.</p>
+                <p style="margin: 0.25rem 0; font-size: 0.85rem;"><strong>Archivos:</strong> {files_str}</p>
+            </div>
+            """
+            st.markdown(success_html, unsafe_allow_html=True)
         else:
-            st.markdown('<div class="error-message fade-in">', unsafe_allow_html=True)
-            st.markdown("### ❌ Error en la Carga")
-            st.markdown("Se produjo un error al subir algunos archivos.")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Mostrar errores
-            st.subheader("Detalles del error:")
+            error_details = ""
             for file_info in st.session_state['uploaded_files']:
                 if not file_info['success']:
-                    st.error(f"{file_info['name']}: {file_info['error']}")
+                    error_details += f"<p style='margin: 0.2rem 0; font-size: 0.8rem;'><strong>{file_info['name']}:</strong> {file_info['error']}</p>"
+            
+            error_html = f"""
+            <div style="background-color: rgba(255, 87, 87, 0.2); border: 1px solid #ff5757; border-radius: 8px; padding: 0.75rem; margin-top: 1.5rem; text-align: center; max-width: 500px; margin-left: auto; margin-right: auto;">
+                <h4 style="margin-top: 0; margin-bottom: 0.5rem;">Error en la Carga</h4>
+                <p style="margin: 0.25rem 0; font-size: 0.85rem;">Se produjo un error al subir algunos archivos.</p>
+                {error_details}
+            </div>
+            """
+            st.markdown(error_html, unsafe_allow_html=True)
         
-        # Botón para reiniciar
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("Cargar nuevos documentos", use_container_width=True):
-                st.session_state['upload_complete'] = False
-                st.session_state['upload_status'] = None
-                st.session_state['uploaded_files'] = []
-                st.experimental_rerun()
+        # Establecer tiempo para autoreset si no está configurado
+        if not st.session_state['auto_reset']:
+            st.session_state['auto_reset'] = True
+            st.session_state['reset_time'] = datetime.now().timestamp()
+    
+# Función para procesar archivos subidos
+def process_uploaded_files(uploaded_files):
+    # Nombre del bucket S3
+    bucket_name = "citas-conciliacion"  # Reemplaza con tu bucket
+    
+    # Procesar cada archivo
+    progress = st.progress(0)
+    results = []
+    
+    for i, file in enumerate(uploaded_files):
+        # Actualizar progreso
+        progress_value = (i + 1) / len(uploaded_files)
+        progress.progress(progress_value)
         
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Subir a S3
+        result = upload_to_s3(file, bucket_name)
+        results.append(result)
+        
+        # Pausa breve para mostrar el progreso
+        time.sleep(0.10)
+    
+    # Guardar resultados y cambiar estado
+    st.session_state['uploaded_files'] = results
+    st.session_state['upload_complete'] = True
+    
+    # Determinar estado general
+    has_error = any(not r['success'] for r in results)
+    st.session_state['upload_status'] = 'error' if has_error else 'success'
+    
+    # Efecto de animación y recarga
+    time.sleep(0.5)  # Brief pause for visual effect
+    st.rerun()
 
 # Ejecutar la aplicación
 if __name__ == "__main__":
