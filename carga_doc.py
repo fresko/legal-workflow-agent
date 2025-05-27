@@ -4,13 +4,17 @@ from datetime import datetime
 import time
 import os
 import uuid
+import random
 
 # Configuración de página
 st.set_page_config(
     page_title="Carga de Documentos",
     page_icon="📄",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
+
+
 
 # Estilos CSS personalizados
 st.markdown("""
@@ -288,6 +292,71 @@ def process_uploaded_files(uploaded_files):
     # Efecto de animación y recarga
     time.sleep(0.5)  # Brief pause for visual effect
     st.rerun()
+
+def chat_legal():
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": "Iniciemos !"}]
+
+    # Display chat messages from history on app rerun
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Accept user input
+    if prompt := st.chat_input("Como te puedo ayudar hoy?"):
+    # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+    # Display user message in chat message container
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Display assistant response in chat message container
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+            assistant_response = random.choice(
+                [
+                    "Hello there! How can I assist you today?",
+                    "Hi, human! Is there anything I can help you with?",
+                    "Do you need help?",
+                ]
+            )
+            # Simulate stream of response with milliseconds delay
+            for chunk in assistant_response.split():
+                full_response += chunk + " "
+                time.sleep(0.05)
+                # Add a blinking cursor to simulate typing
+                message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+# Configuración de la barra lateral
+with st.sidebar:
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 1rem;">
+        <div style="background-color: #333333; width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto; border: 2px solid #39FF14;">
+            <svg xmlns="http://www.w3.org/2000/svg" height="50" viewBox="0 -960 960 960" width="50" fill="#39FF14">
+                <path d="M320-120v-80h80v-80H160v-280q0-83 50-147.5T340-792v-48h40v48q54 14 97 55t43 97h-40q0-58-41-99t-99-41q-58 0-99 41t-41 99v240h400v80H480v80h80v80H320Zm360-520q-17 0-28.5-11.5T640-680q0-17 11.5-28.5T680-720q17 0 28.5 11.5T720-680q0 17-11.5 28.5T680-640Zm80-80q-17 0-28.5-11.5T720-760q0-17 11.5-28.5T760-800q17 0 28.5 11.5T800-760q0 17-11.5 28.5T760-720Z"/>
+            </svg>
+        </div>
+        <h1 style="margin-top: 1rem;">Asistente Legal</h1>
+    </div>
+    """, unsafe_allow_html=True)    
+    st.markdown("""
+    <div style="margin-top: 1rem;">
+        <p class='description' style='text-align: center;'>Tu apoyo inteligente en audiencias   
+            Audiencias de Conciliación, 
+            Audiencias de Tránsito,   
+            Audiencias Legales.</p>                                
+        <center><h3 style="border-bottom: 1px solid rgba(57, 255, 20, 0.3); padding-bottom: 5px;">.</h3></center>
+       
+    </div>
+    """, unsafe_allow_html=True)
+    chat_legal()
+
+   
 
 # Ejecutar la aplicación
 if __name__ == "__main__":
