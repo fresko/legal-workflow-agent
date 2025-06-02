@@ -131,6 +131,99 @@ st.markdown("""
     /* Ocultar botón de deploy */
     .stDeployButton {display: none !important;}
     [data-testid="stToolbar"] {display: none !important;}
+    
+    /* Estilos para el chat en la barra lateral */
+    [data-testid="stChatMessageContent"] {
+        background-color: rgba(57, 255, 20, 0.05);
+        border: 1px solid rgba(57, 255, 20, 0.3);
+        border-radius: 10px;
+        padding: 0.75rem !important;
+    }
+    
+    /* Estilo para mensajes del asistente */
+    [data-testid="stChatMessageContent"][data-testid*="assistant"] {
+        background-color: rgba(57, 255, 20, 0.1);
+        border-color: rgba(57, 255, 20, 0.4);
+    }
+    
+    /* Estilo para mensajes del usuario */
+    [data-testid="stChatMessageContent"][data-testid*="user"] {
+        background-color: rgba(110, 110, 110, 0.1);
+        border-color: rgba(110, 110, 110, 0.3);
+    }
+    
+    /* Estilo para el avatar del usuario */
+    [data-testid="stChatMessageAvatar"][data-testid*="user"] div {
+        background-color: #6e6e6e !important;
+    }
+    
+    /* Estilo para el avatar del asistente */
+    [data-testid="stChatMessageAvatar"][data-testid*="assistant"] div {
+        background-color: #39FF14 !important;
+        color: #333333 !important;
+    }
+    
+    /* Estilo para el input del chat */
+    .stChatInputContainer textarea {
+        border-radius: 10px !important;
+        border: 1px solid rgba(57, 255, 20, 0.3) !important;
+        padding: 10px !important;
+    }
+    
+    .stChatInputContainer textarea:focus {
+        border-color: #39FF14 !important;
+        box-shadow: 0 0 0 1px rgba(57, 255, 20, 0.2) !important;
+    }
+    
+    /* Estilo para el botón de enviar */
+    .stChatInputContainer button {
+        border-radius: 50% !important;
+        background-color: #6e6e6e !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stChatInputContainer button:hover {
+        background-color: #39FF14 !important;
+        color: #333333 !important;
+    }
+    
+    /* Ajustar el contenedor del chat */
+    [data-testid="stChatMessageContainer"] {
+        padding: 0.5rem !important;
+    }
+    
+    /* Eliminar el borde del contenedor del chat */
+    [data-testid="stChatContainer"] {
+        border: none !important;
+    }
+    
+    /* Ajustar tamaño de texto en los mensajes */
+    [data-testid="stChatMessageContent"] p {
+        font-size: 0.9rem !important;
+        margin: 0 !important;
+    }
+    
+    /* Estilo para el placeholder del input */
+    .stChatInputContainer textarea::placeholder {
+        color: #666 !important;
+        font-style: italic !important;
+    }
+    
+    /* Estilo para el historial de chat */
+    [data-testid="stChatMessageContainer"] > div {
+        margin-bottom: 0.75rem !important;
+    }
+    
+    /* Diseño responsive para el chat */
+    @media (max-width: 768px) {
+        [data-testid="stChatMessageContent"] {
+            padding: 0.5rem !important;
+        }
+        
+        [data-testid="stChatMessageContent"] p {
+            font-size: 0.8rem !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -296,7 +389,10 @@ def process_uploaded_files(uploaded_files):
 def chat_legal():
     # Initialize chat history
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Iniciemos !"}]
+        st.session_state.messages = [{
+            "role": "assistant", 
+            "content": "👋 Hola, soy tu Asistente Legal. Puedo ayudarte con:\n\n• Audiencias de conciliación\n• Trámites legales\n• Consultas jurídicas\n\n¿En qué puedo asistirte hoy?"
+        }]
 
     # Display chat messages from history on app rerun
     for message in st.session_state.messages:
@@ -304,10 +400,11 @@ def chat_legal():
             st.markdown(message["content"])
 
     # Accept user input
-    if prompt := st.chat_input("Como te puedo ayudar hoy?"):
-    # Add user message to chat history
+    if prompt := st.chat_input("¿Cómo puedo ayudarte hoy?"):
+        # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
-    # Display user message in chat message container
+        
+        # Display user message in chat message container
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -315,21 +412,27 @@ def chat_legal():
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
-            assistant_response = random.choice(
-                [
-                    "Hello there! How can I assist you today?",
-                    "Hi, human! Is there anything I can help you with?",
-                    "Do you need help?",
-                ]
-            )
-            # Simulate stream of response with milliseconds delay
+            
+            # Lista de respuestas más relacionadas con temas legales
+            assistant_responses = [
+                "Comprendo tu consulta sobre este tema legal. Para asesorarte mejor, necesitaría algunos detalles adicionales sobre tu caso específico.",
+                "Esta es una situación común en procesos de conciliación. Te recomendaría considerar los siguientes aspectos legales...",
+                "Desde el punto de vista jurídico, existen varias alternativas que podrías explorar en este caso.",
+                "Para audiencias de tránsito como la que mencionas, la normativa establece ciertos procedimientos específicos que debemos seguir.",
+                "En el ámbito legal, este tipo de situaciones están reguladas por el artículo correspondiente que establece los lineamientos a seguir."
+            ]
+            
+            assistant_response = random.choice(assistant_responses)
+            
+            # Simular respuesta progresiva
             for chunk in assistant_response.split():
                 full_response += chunk + " "
-                time.sleep(0.05)
-                # Add a blinking cursor to simulate typing
+                time.sleep(0.04)  # Reducido el tiempo para mejor experiencia
                 message_placeholder.markdown(full_response + "▌")
+            
             message_placeholder.markdown(full_response)
-        # Add assistant response to chat history
+        
+        # Añadir respuesta al historial
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 # Configuración de la barra lateral
