@@ -5,6 +5,8 @@ import tempfile
 import requests
 import google.generativeai as genai
 import urllib.parse
+import PyPDF2
+import io
 from urllib.parse import unquote_plus
 
 print('Loading functionn 2')
@@ -13,14 +15,12 @@ print('Loading functionn 2')
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 MODEL_NAME = os.environ.get('MODEL_NAME')
-
+PROMPT_EXTRADATA = os.environ.get('PROMPT')
 # Inicializar el cliente de S3
 s3_client = boto3.client('s3')
 
 # Configurar Gemini API
 genai.configure(api_key=GOOGLE_API_KEY)
-
-##
 ##
 def lambda_handler(event, context):
     print("Received event: " + json.dumps(event, indent=2))
@@ -50,11 +50,8 @@ def lambda_handler(event, context):
         
         
         # Si la clave viene codificada en URL, decodificarla
-        #key = unquote_plus(key)
-        
-        print(f"2.Procesando archivo: s3://{bucket}/{key}")
-        
-         # Descargar el archivo de S3 a un archivo temporal
+        #key = unquote_plus(key)          
+        # Descargar el archivo de S3 a un archivo temporal
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             try:
                 s3_client.download_file(bucket, key, tmp_file.name)
@@ -63,21 +60,28 @@ def lambda_handler(event, context):
             except s3_client.exceptions.ClientError as e:
                 raise Exception(f"Error al descargar el archivo de S3: {e}")
             file_path = tmp_file.name
-            
+            # Verificar si es un PDF y recortarlo
+            if key.lower().endswith('.pdf'):
+                print(f"2.Recortando PDF a las primeras 2 páginas:'{file_path}' // {key}")
+                trimmed_file_path = trim_pdf(file_path, max_pages=2)   
+                print(f"3.Ruta Tmp Recortado:'{trimmed_file_path}'")         
+                # Si el recorte fue exitoso, eliminar el archivo original
+                if trimmed_file_path != file_path:
+                    #os.unlink(file_path)
+                    file_path = trimmed_file_path   
             # Validar que el archivo es un PDF
             #if not file_path.endswith('pdf'):
-            #    raise Exception(f"El archivo '{key}' no es un archivo PDF válido")
-            
-            # Procesar el PDF con Gemini
-            response_data = process_pdf_with_gemini(file_path, MODEL_NAME)
-            
-            # Enviar los resultados al webhook
-            webhook_response = send_to_webhook(webhook_url, response_data)
-            
-            # Eliminar el archivo temporal
-            os.unlink(file_path)
-            
-            # Devolver respuesta
+            #    raise Exception(f"El archivo '{key}' no es un archivo PDF válido")            
+                    print(f"4.Gemini con Archivo Recortado:'{file_path}'")
+                    # Procesar el PDF con Gemini
+                    response_data = process_pdf_with_gemini(file_path, MODEL_NAME,PROMPT_EXTRADATA)            
+                    # Enviar los resultados al webhook
+                    webhook_response = send_to_webhook(webhook_url, response_data)
+                     # Eliminar el archivo temporal
+                    if webhook_response:
+                       os.unlink(file_path) 
+                       print(f"5.Archivo Temporal Eliminado:'{file_path}'")        
+             # Devolver respuesta
             return {
                 'statusCode': 200,
                 'body': json.dumps({
@@ -92,7 +96,39 @@ def lambda_handler(event, context):
         print('Error getting object {} from bucket {}. Make sure they exist and your bucket is in the same region as this function.'.format(key, bucket))
         raise e
 
-def process_pdf_with_gemini(file_path, model_name):
+def trim_pdf(file_path, max_pages=2):
+
+    """Recorta un PDF a un número máximo de páginas"""
+    try:
+        # Abrir el PDF descargado de S3
+        with open(file_path, 'rb') as file:
+            pdf_reader = PyPDF2.PdfReader(file)
+            pdf_writer = PyPDF2.PdfWriter()
+            
+            # Determinar cuántas páginas procesar
+            pages_to_process = min(len(pdf_reader.pages), max_pages)
+            print(f"Procesando {pages_to_process} páginas de un total de {len(pdf_reader.pages)}")
+            
+            # Agregar solo las primeras páginas
+            for page_num in range(pages_to_process):
+                pdf_writer.add_page(pdf_reader.pages[page_num])
+                
+            # Crear un nuevo archivo temporal en una ruta diferente
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_trimmed:
+                trimmed_file_path = tmp_trimmed.name
+            
+            # Guardar el PDF recortado en un archivo temporal nuevo
+            #trimmed_file_path = f"{file_path}_trimmed.pdf"
+            with open(trimmed_file_path, 'wb') as output_file:
+                pdf_writer.write(output_file)
+            
+            return trimmed_file_path
+    except Exception as e:
+        print(f"Error al recortar el PDF: {e}")
+        # En caso de error, devolvemos el archivo original
+        return file_path
+
+def process_pdf_with_gemini(file_path, model_name,prompt):
     """
     Procesa un archivo PDF con el modelo Gemini y extrae información estructurada.
     
@@ -205,30 +241,39 @@ def process_pdf_with_gemini(file_path, model_name):
     )
     
     # Subir el archivo a Gemini
-    files = genai.upload_file(file_path, mime_type="application/pdf")
+    files = genai.upload_file(file_path,mime_type="application/pdf")
     print(f"Uploaded file '{files.display_name}' as: {files.uri}")
     
     # Crear el prompt
-    prompt = "identifica los datos de ciudad(Cali o Bogota o Medellin o Barranquilla),hechos,peticiones,cuantia,convocantes, convocados, fecha de audicencia, jornada am o pm del archivo adjunto"
-
+    #prompt = "identifica los datos de expediente,ciudad(Cali o Bogota o Medellin o Barranquilla),hechos,peticiones,cuantia,convocantes(en el documento se encuentra 'convocante' de forma vertical ), convocados(en el documento se encuentra 'convocado' de forma vertical ), fecha de audicencia, jornada am o pm del archivo adjunto"
+    prompt = prompt
     
     # Crear la historia del chat
-    history = [{
-        "role": "user",
-        "parts": [
-            files,
-            prompt,
-        ],
-    }]
-    
+    #history = [{
+    #   "role": "user",
+    #   "parts": [
+    #       files,
+    #       prompt,
+    #   ],
+    #}]
+
+   
     # Iniciar la sesión de chat
-    chat_session = model.start_chat(history=history)
+    #chat_session = model.start_chat(history=history)
     
     # Enviar mensaje y obtener respuesta
-    response = chat_session.send_message("Analiza el documento según las instrucciones proporcionadas")
+    #response = chat_session.send_message("Analiza el documento según las instrucciones proporcionadas")
+    ##
+     # Crear una nueva sesión de chat sin historial previo
+    #chat_session = model.start_chat(history=[])
     
-    # Procesar la respuesta
+    # Enviar un mensaje con instrucciones claras y el archivo
+    #response = chat_session.send_message([
+    #    files,
+    #   prompt
+    #])
     try:
+        response = model.generate_content([files, prompt])
         result_json = json.loads(response.text)
         print("Datos extraídos exitosamente")
         return result_json

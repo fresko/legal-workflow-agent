@@ -356,7 +356,7 @@ def main():
 # Función para procesar archivos subidos
 def process_uploaded_files(uploaded_files):
     # Nombre del bucket S3
-    bucket_name = "citas-conciliacion"  # Reemplaza con tu bucket
+    bucket_name = "citas-conciliacion" 
     
     # Procesar cada archivo
     progress = st.progress(0)
@@ -415,7 +415,7 @@ def chat_legal():
             
             # Lista de respuestas más relacionadas con temas legales
             assistant_responses = [
-                "Comprendo tu consulta sobre este tema legal. Para asesorarte mejor, necesitaría algunos detalles adicionales sobre tu caso específico.",
+                "Comprendo tu consulta. Para asesorarte mejor, necesitaría algunos detalles adicionales sobre tu caso específico.",
                 "Esta es una situación común en procesos de conciliación. Te recomendaría considerar los siguientes aspectos legales...",
                 "Desde el punto de vista jurídico, existen varias alternativas que podrías explorar en este caso.",
                 "Para audiencias de tránsito como la que mencionas, la normativa establece ciertos procedimientos específicos que debemos seguir.",
