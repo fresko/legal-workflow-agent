@@ -74,7 +74,7 @@ def lambda_handler(event, context):
             #    raise Exception(f"El archivo '{key}' no es un archivo PDF válido")            
                     print(f"4.Gemini con Archivo Recortado:'{file_path}'")
                     # Procesar el PDF con Gemini
-                    response_data = process_pdf_with_gemini(file_path, MODEL_NAME,PROMPT_EXTRADATA)            
+                    response_data = process_pdf_with_gemini(file_path, MODEL_NAME,PROMPT_EXTRADATA,SYS_INSTRUCTION)            
                     # Enviar los resultados al webhook
                     webhook_response = send_to_webhook(webhook_url, response_data)
                      # Eliminar el archivo temporal
@@ -128,7 +128,7 @@ def trim_pdf(file_path, max_pages=2):
         # En caso de error, devolvemos el archivo original
         return file_path
 
-def process_pdf_with_gemini(file_path, model_name,prompt):
+def process_pdf_with_gemini(file_path, model_name,prompt,system_instruction):
     """
     Procesa un archivo PDF con el modelo Gemini y extrae información estructurada.
     
@@ -237,6 +237,7 @@ def process_pdf_with_gemini(file_path, model_name,prompt):
     # Inicializar el modelo
     model = genai.GenerativeModel(
         model_name=model_name,
+        system_instruction=system_instruction,
         generation_config=generation_config,
     )
     
