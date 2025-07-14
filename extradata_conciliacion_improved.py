@@ -11,20 +11,20 @@ import re
 from urllib.parse import unquote_plus
 from datetime import datetime, timedelta
 
-print('Loading function')
+print('Loading functionn 2')
 
 # Configurar API key de Google Gemini desde variable de entorno
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 MODEL_NAME = os.environ.get('MODEL_NAME')
 PROMPT_EXTRADATA = os.environ.get('PROMPT')
-
+SYS_INSTRUCTION = os.environ.get('SYS_INSTRUCTION')
 # Inicializar el cliente de S3
 s3_client = boto3.client('s3')
 
 # Configurar Gemini API
 genai.configure(api_key=GOOGLE_API_KEY)
-
+##
 def lambda_handler(event, context):
     print("Received event: " + json.dumps(event, indent=2))
 
@@ -32,42 +32,59 @@ def lambda_handler(event, context):
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'], encoding='utf-8')
     webhook_url = event.get('webhook_url', WEBHOOK_URL)
-    
-    file_path = None
-    trimmed_file_path = None
-    
     try:
         response = s3_client.get_object(Bucket=bucket, Key=key)     
         print("CONTENT TYPE: " + response['ContentType'])
         print(f"1.Procesando archivo: s3://{bucket}/{key}")
+         # Extraer parámetros del evento
+        #bucket = event.get('bucket')
+        #key = event.get('key')
+        #webhook_url = event.get('webhook_url', WEBHOOK_URL)
         
+        # Validar que se recibieron los parámetros necesarios
+        #if not bucket or not key:
+        #    return {
+        #        'statusCode': 400,
+        #        'body': json.dumps({
+        #            'error': 'Se requieren los parámetros "bucket" y "key"'
+        #        })
+        #    }
+         # Validar que se recibieron los parámetros necesarios
+        
+        
+        # Si la clave viene codificada en URL, decodificarla
+        #key = unquote_plus(key)          
         # Descargar el archivo de S3 a un archivo temporal
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
             try:
                 s3_client.download_file(bucket, key, tmp_file.name)
-                file_path = tmp_file.name
             except s3_client.exceptions.NoSuchKey:
                 raise Exception(f"El archivo '{key}' no existe en el bucket '{bucket}'")
             except s3_client.exceptions.ClientError as e:
                 raise Exception(f"Error al descargar el archivo de S3: {e}")
-        
-        # Verificar si es un PDF y recortarlo
-        if key.lower().endswith('.pdf'):
-            print(f"2.Recortando PDF a las primeras 2 páginas:'{file_path}' // {key}")
-            trimmed_file_path = trim_pdf(file_path, max_pages=2)   
-            print(f"3.Ruta Tmp Recortado:'{trimmed_file_path}'")         
-            
-            # Usar el archivo recortado para procesamiento
-            processing_file = trimmed_file_path if trimmed_file_path != file_path else file_path
-            
-            print(f"4.Gemini con Archivo:'{processing_file}'")
-            # Procesar el PDF con Gemini
-            response_data = process_pdf_with_gemini(processing_file, MODEL_NAME, PROMPT_EXTRADATA)            
-            
-            # Enviar los resultados al webhook
-            webhook_response = send_to_webhook(webhook_url, response_data)
-            
-            # Devolver respuesta
+            file_path = tmp_file.name
+            # Verificar si es un PDF y recortarlo
+            if key.lower().endswith('.pdf'):
+                print(f"2.Recortando PDF a las primeras 2 páginas:'{file_path}' // {key}")
+                trimmed_file_path = trim_pdf(file_path, max_pages=2)   
+                print(f"3.Ruta Tmp Recortado:'{trimmed_file_path}'")         
+                # Si el recorte fue exitoso, eliminar el archivo original
+                if trimmed_file_path != file_path:
+                    #os.unlink(file_path)
+                    file_path = trimmed_file_path   
+            # Validar que el archivo es un PDF
+            #if not file_path.endswith('pdf'):
+            #    raise Exception(f"El archivo '{key}' no es un archivo PDF válido")            
+                    print(f"4.Gemini con Archivo Recortado:'{file_path}'")
+                    # Procesar el PDF con Gemini
+                    response_data = process_pdf_with_gemini(file_path, MODEL_NAME,PROMPT_EXTRADATA,SYS_INSTRUCTION)            
+                    # Enviar los resultados al webhook
+                    webhook_response = send_to_webhook(webhook_url, response_data)
+                     # Eliminar el archivo temporal
+                    if webhook_response:
+                       os.unlink(file_path) 
+                       print(f"5.Archivo Temporal Eliminado:'{file_path}'")        
+             # Devolver respuesta
             return {
                 'statusCode': 200,
                 'body': json.dumps({
@@ -76,26 +93,14 @@ def lambda_handler(event, context):
                     'webhook_response': webhook_response
                 })
             }
-        else:
-            raise Exception(f"El archivo '{key}' no es un archivo PDF válido")
-            
+        #return response['ContentType']
     except Exception as e:
-        print(f"Error: {e}")
+        print(e)
         print('Error getting object {} from bucket {}. Make sure they exist and your bucket is in the same region as this function.'.format(key, bucket))
         raise e
-    finally:
-        # Limpiar archivos temporales
-        try:
-            if file_path and os.path.exists(file_path):
-                os.unlink(file_path)
-                print(f"Archivo original eliminado: {file_path}")
-            if trimmed_file_path and trimmed_file_path != file_path and os.path.exists(trimmed_file_path):
-                os.unlink(trimmed_file_path)
-                print(f"Archivo recortado eliminado: {trimmed_file_path}")
-        except Exception as cleanup_error:
-            print(f"Error limpiando archivos temporales: {cleanup_error}")
 
 def trim_pdf(file_path, max_pages=2):
+
     """Recorta un PDF a un número máximo de páginas"""
     try:
         # Abrir el PDF descargado de S3
@@ -116,6 +121,7 @@ def trim_pdf(file_path, max_pages=2):
                 trimmed_file_path = tmp_trimmed.name
             
             # Guardar el PDF recortado en un archivo temporal nuevo
+            #trimmed_file_path = f"{file_path}_trimmed.pdf"
             with open(trimmed_file_path, 'wb') as output_file:
                 pdf_writer.write(output_file)
             
@@ -125,7 +131,7 @@ def trim_pdf(file_path, max_pages=2):
         # En caso de error, devolvemos el archivo original
         return file_path
 
-def process_pdf_with_gemini(file_path, model_name, prompt):
+def process_pdf_with_gemini(file_path, model_name, prompt,system_instruction):
     """
     Procesa un archivo PDF con el modelo Gemini y extrae información estructurada.
     
@@ -248,76 +254,7 @@ def process_pdf_with_gemini(file_path, model_name, prompt):
     }
     
     # Prompt mejorado para mejor detección
-    enhanced_prompt = """
-    Analiza CUIDADOSAMENTE el documento adjunto (solo las páginas del formulario, no los anexos), que es una solicitud de audiencia de conciliación. 
-
-    INSTRUCCIONES ESPECÍFICAS PARA CAMPOS VERTICALES:
-    
-    🔍 CONVOCANTE vs CONVOCADO - DIFERENCIACIÓN CRÍTICA:
-    - Busca las etiquetas "CONVOCANTE" y "CONVOCADO" o "CONVOCANDO" que aparecen de forma VERTICAL (rotadas 90°) en el lado izquierdo del documento
-    - Estas etiquetas delimitan secciones claramente diferenciadas
-    - Todo lo que está bajo la etiqueta vertical "CONVOCANTE" pertenece a convocantes
-    - Todo lo que está bajo la etiqueta vertical "CONVOCADO"/"CONVOCANDO" pertenece a convocados
-    
-    📋 ESTRUCTURA DE CAMPOS POR SECCIÓN:
-    Cada sección (CONVOCANTE/CONVOCADO) contiene:
-    - CONDUCTOR: nombre, email, teléfono
-    - PROPIETARIO: nombre, email, teléfono  
-    - OTROS: nombre, email, teléfono (si aplica)
-    
-    📧 MANEJO DE EMAILS:
-    - Si encuentras múltiples direcciones de correo en un campo, concaténalas separadas por comas
-    - Busca patrones como: email1@domain.com, email2@domain.com
-    
-    🏙️ CIUDAD - IDENTIFICACIÓN POR CHECKBOX:
-    - Busca casillas marcadas junto a: Bogotá[ ], Cali[✓], Medellín[ ], Barranquilla[ ]
-    - La ciudad marcada es la seleccionada
-    
-    📅 FECHAS Y HORARIOS - DETECCIÓN ESPECÍFICA DE CASILLAS AM/PM:
-    
-    🕐 JORNADA (AM/PM) - ANÁLISIS DE CASILLAS CHECK:
-    - Busca ESPECÍFICAMENTE las casillas de check para AM y PM en la sección de fecha/hora
-    - Pueden aparecer como:
-      * AM [✓] PM [ ]  (AM marcado)
-      * AM [ ] PM [✓]  (PM marcado)
-      * AM [x] PM [ ]  (AM marcado con x)
-      * AM [ ] PM [x]  (PM marcado con x)
-    - También pueden aparecer como checkboxes marcados visualmente: ☑, ✓, X, o casillas rellenas
-    - La casilla MARCADA indica la jornada seleccionada
-    - Si no encuentras casillas marcadas claramente, busca el contexto de la hora para determinar AM/PM
-    
-    🕒 PROCESAMIENTO DE HORA Y JORNADA:
-    - Extrae la HORA exacta del documento (ej: 10:00, 2:30, 14:00)
-    - Identifica la JORNADA basándose en las casillas marcadas (AM o PM)
-    - Si la hora ya está en formato 24h (ej: 14:00), determina automáticamente si es AM o PM
-    
-    📅 FORMATO DE FECHAS:
-    - Convierte fechas a formato YYYY-MM-DD
-    - Para fecha_inicio: Combina fecha, hora y jornada en formato ISO 8601 (YYYY-MM-DDTHH:mm:ss)
-    - Para fecha_fin: Agrega exactamente 1 hora a la fecha_inicio
-    
-    ⚠️ INSTRUCCIONES CRÍTICAS:
-    1. SIEMPRE busca primero las casillas de check AM/PM marcadas
-    2. Si no encuentras casillas, usa el contexto de la hora para determinar AM/PM
-    3. Asegúrate de que fecha_inicio y fecha_fin sean consistentes con la jornada detectada
-    4. Valida que los horarios tengan sentido (ej: no 25:00 horas)
-    
-    Extrae la información y estructúrala según el schema JSON proporcionado. 
-    Analiza ÚNICAMENTE este documento sin considerar información previa.
-    """
-    
-    # Instrucciones del sistema optimizadas
-    system_instruction = """
-    Eres un experto en análisis de documentos legales colombianos. 
-    Tu tarea es extraer información de formularios de solicitud de audiencia de conciliación.
-    
-    REGLAS IMPORTANTES:
-    1. Diferencia claramente entre CONVOCANTE y CONVOCADO usando las etiquetas verticales
-    2. Mantén formato de fecha YYYY-MM-DD
-    3. Concatena múltiples emails con comas
-    4. Identifica roles específicos: CONDUCTOR, PROPIETARIO, OTROS
-    5. Responde SIEMPRE en formato JSON válido
-    """
+    enhanced_prompt = PROMPT_EXTRADATA
     
     # Inicializar el modelo con instrucciones del sistema
     model = genai.GenerativeModel(
@@ -525,6 +462,13 @@ def _validate_response(data):
 def send_to_webhook(webhook_url, json_data):
     """
     Envía los datos extraídos a un webhook.
+    
+    Args:
+        webhook_url: URL del webhook
+        json_data: Datos en formato diccionario para enviar como JSON
+        
+    Returns:
+        dict: Información sobre la respuesta del webhook
     """
     try:
         # Configurar headers para la solicitud
@@ -539,8 +483,7 @@ def send_to_webhook(webhook_url, json_data):
         response = requests.post(
             webhook_url,
             data=json.dumps(json_data),
-            headers=headers,
-            timeout=30  # Añadir timeout
+            headers=headers
         )
         
         # Verificar si la petición fue exitosa
